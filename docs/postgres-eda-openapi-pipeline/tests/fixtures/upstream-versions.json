@@ -1,0 +1,5 @@
+{
+  "19": {"major": 19, "version": "19beta2", "alpine": "3.24"},
+  "18": {"major": 18, "version": "18.4", "alpine": "3.24"},
+  "17": {"major": 17, "version": "17.10", "alpine": "3.24"}
+}
