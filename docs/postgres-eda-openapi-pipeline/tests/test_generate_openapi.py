@@ -116,6 +116,10 @@ class GenerateOpenApiTests(unittest.TestCase):
         self.assertEqual("3.1.0", spec["openapi"])
         self.assertEqual(2, len(spec["paths"]))
         self.assertIn("PostgresError", spec["components"]["schemas"])
+        self.assertEqual(
+            "password", spec["x-postgres-authentication"]["method"]
+        )
+        self.assertNotIn("securitySchemes", spec["components"])
         operation_ids = [
             operation["operationId"]
             for path_item in spec["paths"].values()

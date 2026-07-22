@@ -335,19 +335,16 @@ def build_spec(
                 },
             }
         ],
-        "security": [{"postgresPassword": []}],
+        "x-postgres-authentication": {
+            "method": "password",
+            "fields": ["username", "password"],
+            "description": (
+                "Native PostgreSQL password authentication. The database server negotiates "
+                "the password exchange according to pg hba configuration."
+            ),
+        },
         "paths": dict(sorted(paths.items())),
         "components": {
-            "securitySchemes": {
-                "postgresPassword": {
-                    "type": "http",
-                    "scheme": "basic",
-                    "description": (
-                        "Synthetic representation of PostgreSQL username/password credentials. "
-                        "The actual connection uses the PostgreSQL wire protocol, not HTTP Basic."
-                    ),
-                }
-            },
             "schemas": {
                 "PostgresError": {
                     "type": "object",

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "language": "rust",
+  "display_name": "PostgreSQL 18.4 catalog",
+  "project_name": "postgresql-mcp",
+  "default_version": "18",
+  "versions": {
+    "18": {
+      "db_file": "mcp_store.db",
+      "schemas_file": "src/validation/generated_schemas.json.zst",
+      "source": "docs/postgres-eda-openapi-pipeline/openapi/18/postgres.openapi.yaml",
+      "added_at": 1784683398
+    },
+    "17": {
+      "db_file": "mcp_store_v17.db",
+      "schemas_file": "src/validation/generated_schemas_v17.json.zst",
+      "source": "docs/postgres-eda-openapi-pipeline/openapi/17/postgres.openapi.yaml",
+      "added_at": 1784683423
+    },
+    "16": {
+      "db_file": "mcp_store_v16.db",
+      "schemas_file": "src/validation/generated_schemas_v16.json.zst",
+      "source": "docs/postgres-eda-openapi-pipeline/openapi/16/postgres.openapi.yaml",
+      "added_at": 1784683438
+    },
+    "15": {
+      "db_file": "mcp_store_v15.db",
+      "schemas_file": "src/validation/generated_schemas_v15.json.zst",
+      "source": "docs/postgres-eda-openapi-pipeline/openapi/15/postgres.openapi.yaml",
+      "added_at": 1784683442
+    },
+    "14": {
+      "db_file": "mcp_store_v14.db",
+      "schemas_file": "src/validation/generated_schemas_v14.json.zst",
+      "source": "docs/postgres-eda-openapi-pipeline/openapi/14/postgres.openapi.yaml",
+      "added_at": 1784683445
+    },
+    "19beta2": {
+      "db_file": "mcp_store_v19beta2.db",
+      "schemas_file": "src/validation/generated_schemas_v19beta2.json.zst",
+      "source": "docs/postgres-eda-openapi-pipeline/openapi/19beta2/postgres.openapi.yaml",
+      "added_at": 1784683448
+    }
+  }
+}

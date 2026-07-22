@@ -1,0 +1,27 @@
+name: Publish crate
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2.9.1
+      - run: cargo package --locked
+      - name: Enforce crates.io's 10 MB package limit
+        shell: bash
+        run: |
+          crate=$(find target/package -maxdepth 1 -name '*.crate' -print -quit)
+          size=$(wc -c < "$crate")
+          if (( size >= 10000000 )); then
+            echo "crate is ${size} bytes; crates.io requires less than 10000000" >&2
+            exit 1
+          fi
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

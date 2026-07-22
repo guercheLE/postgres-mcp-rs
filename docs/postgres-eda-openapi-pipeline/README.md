@@ -136,9 +136,10 @@ for schema/tool generation rather than an HTTP service exposed by PostgreSQL:
 - `PostgresError` preserves standard diagnostic fields such as SQLSTATE,
   severity, detail, hint, source object, and constraint.
 
-The top-level `postgresPassword` security scheme is likewise a synthetic
-representation of username/password credentials. A real client still connects
-through the PostgreSQL wire protocol and the server's configured `pg_hba.conf`.
+The top-level `x-postgres-authentication` extension records native password
+authentication with username/password fields. It deliberately defines no
+OpenAPI `securitySchemes`, because PostgreSQL connects through its own wire
+protocol and negotiates the password exchange from `pg_hba.conf`.
 
 ## Layout
 
