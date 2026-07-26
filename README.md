@@ -45,6 +45,7 @@ Supported PostgreSQL authentication input: `password` (username/password). Postg
 | `POSTGRES_MCP_USERNAME` / `POSTGRES_MCP_PASSWORD` | Overrides any stored PostgreSQL password credential — set both to authenticate without running `setup` first (checked before the OS keychain/encrypted-file fallback). |
 | `POSTGRES_MCP_API_VERSION` | Embedded PostgreSQL catalog version used by `search`, `get`, and `call`. |
 | `POSTGRES_MCP_LOG_LEVEL` | Log verbosity (`trace`/`debug`/`info`/`warn`/`error`). |
+| `POSTGRES_MCP_READ_ONLY` | Defaults to `true`. When true, every `execute-sql` connection is placed into PostgreSQL's own `default_transaction_read_only` session mode before any statement runs, so the database itself rejects INSERT/UPDATE/DELETE/DDL — independent of what the connecting role's actual grants would otherwise allow, and covering writes smuggled inside a data-modifying CTE under an outer SELECT. Set to `false` to allow `execute-sql` to write. `call` operations are unaffected — they always run inside their own forced read-only transaction regardless of this setting. |
 
 See `.env.example` for the full list of supported variables.
 

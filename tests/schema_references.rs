@@ -78,6 +78,62 @@ fn every_stored_input_and_output_schema_is_self_contained() {
     }
 }
 
+fn assert_no_refs(value: &Value, context: &str) {
+    match value {
+        Value::Object(map) => {
+            assert!(
+                !map.contains_key("$ref") && !map.contains_key("$dynamicRef"),
+                "{context}: expected every $ref to be fully inlined, found one"
+            );
+            for child in map.values() {
+                assert_no_refs(child, context);
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                assert_no_refs(child, context);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// No PostgreSQL catalog operation's schema is genuinely self-referential
+/// (unlike, say, a generic tree-shaped REST resource), so mcpify's
+/// `schema_resolve::finalize_with_defs` can always fully inline every
+/// `$ref` here — this asserts that actually happens, not just that any
+/// remaining `$ref` would be self-contained.
+#[test]
+fn every_stored_input_and_output_schema_has_no_ref_left() {
+    for (version, file) in VERSION_STORE_FILES {
+        let compressed = std::fs::read(compressed_store_path(file)).unwrap();
+        let raw = zstd::decode_all(compressed.as_slice()).unwrap();
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), raw).unwrap();
+        let connection = rusqlite::Connection::open(temp.path()).unwrap();
+        let mut statement = connection
+            .prepare("SELECT operation_id, input_schema, output_schema FROM endpoints")
+            .unwrap();
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .unwrap();
+        for row in rows {
+            let (operation_id, input, output) = row.unwrap();
+            for (kind, serialized) in [("input", input), ("output", output)] {
+                let schema: Value = serde_json::from_str(&serialized).unwrap();
+                let context = format!("version {version} operation {operation_id} {kind}");
+                assert_no_refs(&schema, &context);
+            }
+        }
+    }
+}
+
 #[test]
 fn every_validation_schema_is_self_contained() {
     for (version, file) in VERSION_STORE_FILES {

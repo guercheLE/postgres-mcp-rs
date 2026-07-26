@@ -326,7 +326,7 @@ async fn configure_transaction(
     Ok(())
 }
 
-async fn configure_session(client: &Client, timeout_ms: u64) -> anyhow::Result<()> {
+async fn configure_session(client: &Client, timeout_ms: u64, read_only: bool) -> anyhow::Result<()> {
     let timeout = timeout_ms.max(1).to_string();
     client
         .query_one(
@@ -335,6 +335,23 @@ async fn configure_session(client: &Client, timeout_ms: u64) -> anyhow::Result<(
         )
         .await
         .context("failed to configure PostgreSQL statement_timeout")?;
+    if read_only {
+        // `is_local = false` (the 3rd `set_config` argument) makes this a
+        // session-level GUC, not just the current transaction's — every
+        // statement `execute_sql` runs afterward, including ones PostgreSQL
+        // itself starts an implicit transaction for, is covered. PostgreSQL
+        // enforces this at the executor level, so it also rejects a write
+        // smuggled inside a data-modifying CTE under an outer SELECT (e.g.
+        // `WITH t AS (DELETE ... RETURNING *) SELECT * FROM t`), which
+        // `is_row_query`'s leading-keyword check alone cannot catch.
+        client
+            .query_one(
+                "SELECT set_config('default_transaction_read_only', 'on', false)",
+                &[],
+            )
+            .await
+            .context("failed to enable PostgreSQL read-only safeguard")?;
+    }
     Ok(())
 }
 
@@ -468,7 +485,7 @@ pub async fn execute_parameterized_sql(
     let params = text_params(&values);
 
     let client = connect(config, credentials).await?;
-    configure_session(&client, config.timeout_ms).await?;
+    configure_session(&client, config.timeout_ms, config.read_only).await?;
     // query_typed/execute_typed fix every parameter's wire type as TEXT.
     // PostgreSQL's extended protocol therefore never parses a value as SQL.
     // Callers use explicit casts such as `$1::text::integer` for non-text

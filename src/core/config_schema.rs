@@ -33,6 +33,9 @@ fn default_host() -> String {
 fn default_port() -> u16 {
     3000
 }
+fn default_read_only() -> bool {
+    true
+}
 
 // mcpify:versions:begin
 fn default_api_version() -> String {
@@ -63,4 +66,16 @@ pub struct Config {
     pub port: u16,
     #[serde(default)]
     pub cors_allow: Option<String>,
+    /// Safeguard independent of the connecting role's actual PostgreSQL
+    /// grants: when true (the default), every `execute_sql` connection is
+    /// placed into a native `default_transaction_read_only` session before
+    /// any statement runs, so PostgreSQL itself rejects INSERT/UPDATE/
+    /// DELETE/DDL — including ones smuggled inside a data-modifying CTE
+    /// under an outer SELECT (e.g. `WITH t AS (DELETE ... RETURNING *)
+    /// SELECT * FROM t`), which no amount of app-level SQL-text sniffing
+    /// can reliably catch. Catalog `call` operations are unaffected — they
+    /// already always run inside their own forced read-only transaction
+    /// regardless of this setting.
+    #[serde(default = "default_read_only")]
+    pub read_only: bool,
 }

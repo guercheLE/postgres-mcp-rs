@@ -36,6 +36,11 @@ fn parse_env_value(config_key: &str, value: &str) -> Value {
     {
         return Value::Number(number.into());
     }
+    if config_key == "read_only"
+        && let Ok(boolean) = value.parse::<bool>()
+    {
+        return Value::Bool(boolean);
+    }
     Value::String(value.to_string())
 }
 
@@ -52,6 +57,7 @@ fn env_overrides() -> Map<String, Value> {
         ("cors_allow", "CORS_ALLOW"),
         ("timeout_ms", "TIMEOUT_MS"),
         ("port", "PORT"),
+        ("read_only", "READ_ONLY"),
     ] {
         if let Ok(value) = std::env::var(format!("{ENV_PREFIX}_{env_suffix}")) {
             overrides.insert(config_key.to_string(), parse_env_value(config_key, &value));
@@ -110,6 +116,25 @@ mod tests {
         let config = load_config(base_flags()).unwrap();
         assert_eq!(config.log_level, "info");
         assert_eq!(config.port, 3000);
+        assert!(config.read_only, "read_only must default to true");
+    }
+
+    #[test]
+    fn read_only_can_be_disabled_via_cli_flags() {
+        let mut flags = base_flags();
+        flags.insert("read_only".to_string(), json!(false));
+        let config = load_config(flags).unwrap();
+        assert!(!config.read_only);
+    }
+
+    #[test]
+    fn read_only_env_values_are_typed_as_booleans_before_deserialization() {
+        assert_eq!(parse_env_value("read_only", "false"), json!(false));
+        assert_eq!(parse_env_value("read_only", "true"), json!(true));
+        assert_eq!(
+            parse_env_value("read_only", "not-a-bool"),
+            json!("not-a-bool")
+        );
     }
 
     #[test]
