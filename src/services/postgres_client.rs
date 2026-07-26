@@ -326,7 +326,11 @@ async fn configure_transaction(
     Ok(())
 }
 
-async fn configure_session(client: &Client, timeout_ms: u64, read_only: bool) -> anyhow::Result<()> {
+async fn configure_session(
+    client: &Client,
+    timeout_ms: u64,
+    read_only: bool,
+) -> anyhow::Result<()> {
     let timeout = timeout_ms.max(1).to_string();
     client
         .query_one(

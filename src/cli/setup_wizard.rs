@@ -160,8 +160,8 @@ async fn persist_selection(
     config_fields: &serde_json::Value,
 ) -> anyhow::Result<()> {
     let local_dir = std::env::current_dir()?;
-    let global_config =
-        postgres_mcp::core::credential_storage::resolve_home_dir().join(".postgresql-mcp/config.yml");
+    let global_config = postgres_mcp::core::credential_storage::resolve_home_dir()
+        .join(".postgresql-mcp/config.yml");
     persist_selection_at(selection, env, config_fields, &local_dir, &global_config).await
 }
 

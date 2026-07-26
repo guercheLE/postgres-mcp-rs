@@ -1,9 +1,22 @@
 use std::process::{Command, Output};
 
 fn generated_server(args: &[&str]) -> Output {
+    // A genuinely unbound port, not just "http://127.0.0.1" (port 80) --
+    // GitHub's windows-latest runners ship IIS with a Default Web Site
+    // listening on port 80, which answers real HTTP requests and makes
+    // `test-connection` wrongly report success against a URL nothing here
+    // actually serves.
+    let sentinel_port = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap().port()
+    };
+
     Command::new(env!("CARGO_BIN_EXE_postgresql-mcp"))
         .args(args)
-        .env("POSTGRES_MCP_URL", "http://127.0.0.1")
+        .env(
+            "POSTGRES_MCP_URL",
+            format!("http://127.0.0.1:{sentinel_port}"),
+        )
         .env("POSTGRES_MCP_AUTH_METHOD", "password")
         .env_remove("POSTGRES_MCP_API_VERSION")
         .env_remove("POSTGRES_MCP_TRANSPORT")
