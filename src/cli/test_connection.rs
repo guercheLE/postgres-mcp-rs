@@ -1,4 +1,4 @@
-// PostgreSQL 18.4 catalog MCP server — adapted for PostgreSQL native protocol.
+// PostgreSQL catalog MCP server — adapted for PostgreSQL native protocol.
 
 use postgres_mcp::auth::auth_manager::AuthManager;
 use postgres_mcp::core::config_manager::load_config;
