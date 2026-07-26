@@ -455,6 +455,38 @@ mod tests {
             .unwrap();
         assert_eq!(call.is_error, Some(true));
 
+        // A known-good operationId reaches past the endpoint lookup into
+        // credential resolution, which fails fast (no credentials are
+        // seeded on this test's `AuthManager`) without ever touching the
+        // network -- exercising the `call`/`execute_sql` tool bodies'
+        // credential-resolution branch that "definitely-unknown" above
+        // never reaches.
+        let call_known = client
+            .call_tool(
+                CallToolRequestParams::new("call").with_arguments(
+                    serde_json::json!({ "operation_id": operation_id, "arguments": {} })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(call_known.is_error, Some(true));
+
+        let execute_sql = client
+            .call_tool(
+                CallToolRequestParams::new("execute_sql").with_arguments(
+                    serde_json::json!({ "sql": "SELECT 1" })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(execute_sql.is_error, Some(true));
+
         drop(client);
         tokio::time::timeout(std::time::Duration::from_secs(2), server_task)
             .await

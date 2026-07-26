@@ -637,4 +637,230 @@ mod tests {
             "{\"a\",\"b\\\"c\",NULL,{\"1\",\"2\"}}"
         );
     }
+
+    #[test]
+    fn postgres_array_literal_serializes_object_elements() {
+        let result = postgres_array_literal(&json!([{"a": 1}])).unwrap();
+        assert!(result.starts_with('{') && result.ends_with('}'));
+        assert!(result.contains("\\\"a\\\":1"));
+    }
+
+    #[test]
+    fn parse_endpoint_target_recognizes_routine_paths() {
+        assert_eq!(
+            parse_endpoint_target("/routines/pg_catalog/set_config/text_text_boolean_deadbeef")
+                .unwrap(),
+            EndpointTarget::Routine {
+                schema: "pg_catalog".to_string(),
+                name: "set_config".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn build_routine_sql_covers_positional_args_skipped_defaults_bytea_casts_and_array_returns() {
+        let endpoint = endpoint(
+            "/routines/pg_catalog/lo_get/oid_bigint_bigint_deadbeef",
+            json!({
+                "requestBody": {"content": {"application/json": {"schema": {
+                    "properties": {
+                        "arg1": {"type": "string", "x-postgres-type": "bytea"},
+                        "arg2": {"type": ["integer", "null"], "x-postgres-type": "bigint"}
+                    },
+                    "required": ["arg1"]
+                }}}}
+            }),
+            json!({"200": {"content": {"application/json": {"schema": {"type": "array"}}}}}),
+        );
+        let (sql, values) = build_routine_sql(
+            &endpoint,
+            "pg_catalog",
+            "lo_get",
+            &json!({"body": {"arg1": "aGVsbG8="}}),
+        )
+        .unwrap();
+        assert!(sql.contains("decode($1::text, 'base64')"));
+        assert!(!sql.contains("=>"));
+        assert!(sql.contains("jsonb_agg"));
+        assert_eq!(values.len(), 1);
+    }
+
+    #[test]
+    fn trusted_postgres_type_covers_pseudo_types_variadics_and_rejects_unsafe_syntax() {
+        assert_eq!(
+            trusted_postgres_type(&json!({"x-postgres-type": "integer"})).unwrap(),
+            ("integer".to_string(), false)
+        );
+        assert_eq!(
+            trusted_postgres_type(&json!({"x-postgres-type": "anyarray"})).unwrap(),
+            ("text[]".to_string(), true)
+        );
+        assert_eq!(
+            trusted_postgres_type(&json!({"x-postgres-type": "anyelement"})).unwrap(),
+            ("text".to_string(), false)
+        );
+        assert_eq!(
+            trusted_postgres_type(&json!({"x-postgres-type": "integer", "type": "array"})).unwrap(),
+            ("integer[]".to_string(), true)
+        );
+        assert!(trusted_postgres_type(&json!({"x-postgres-type": ""})).is_err());
+        assert!(
+            trusted_postgres_type(&json!({"x-postgres-type": "integer; DROP TABLE users"}))
+                .is_err()
+        );
+        assert!(trusted_postgres_type(&json!({})).is_err());
+    }
+
+    #[test]
+    fn type_includes_matches_string_and_array_type_declarations() {
+        assert!(type_includes(&json!({"type": "array"}), "array"));
+        assert!(type_includes(&json!({"type": ["string", "null"]}), "null"));
+        assert!(!type_includes(&json!({"type": "string"}), "array"));
+        assert!(!type_includes(&json!({}), "array"));
+    }
+
+    #[test]
+    fn parameter_sort_key_orders_positional_arguments_before_named_ones() {
+        let mut names = vec!["setting_name", "arg2", "arg1", "is_local"];
+        names.sort_by_key(|name| parameter_sort_key(name));
+        assert_eq!(names, vec!["arg1", "arg2", "is_local", "setting_name"]);
+    }
+
+    #[test]
+    fn routine_body_schema_errors_when_request_body_properties_are_missing() {
+        let missing = endpoint("/routines/pg_catalog/foo/sig", json!({}), json!({}));
+        assert!(routine_body_schema(&missing).is_err());
+    }
+
+    #[test]
+    fn success_schema_reports_the_200_response_body_when_present() {
+        let with_schema = endpoint(
+            "/routines/pg_catalog/foo/sig",
+            json!({}),
+            json!({"200": {"content": {"application/json": {"schema": {"type": "string"}}}}}),
+        );
+        assert!(success_schema(&with_schema).is_some());
+
+        let without_schema = endpoint("/routines/pg_catalog/foo/sig", json!({}), json!({}));
+        assert!(success_schema(&without_schema).is_none());
+    }
+
+    #[test]
+    fn bound_text_from_json_covers_every_value_shape() {
+        assert!(
+            BoundText::from_json(&Value::Null, false)
+                .unwrap()
+                .value
+                .is_none()
+        );
+        assert_eq!(
+            BoundText::from_json(&json!(true), false).unwrap().value,
+            Some("true".to_string())
+        );
+        assert_eq!(
+            BoundText::from_json(&json!(42), false).unwrap().value,
+            Some("42".to_string())
+        );
+        assert_eq!(
+            BoundText::from_json(&json!("hi"), false).unwrap().value,
+            Some("hi".to_string())
+        );
+        assert_eq!(
+            BoundText::from_json(&json!({"a": 1}), false).unwrap().value,
+            Some("{\"a\":1}".to_string())
+        );
+        assert_eq!(
+            BoundText::from_json(&json!([1, 2]), true).unwrap().value,
+            Some("{\"1\",\"2\"}".to_string())
+        );
+    }
+
+    fn refused_connection_fixture() -> (Config, RequestCredentials) {
+        // `main.rs` installs this once at real-binary startup; `cargo test`
+        // never runs `main`, so any test that reaches `connect`'s
+        // `MakeRustlsConnect` setup needs it installed itself. A second
+        // `install_default()` call (e.g. from another test in this same
+        // process) errors because one is already installed -- exactly the
+        // state this call wants, so that's fine to ignore.
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let config: Config = serde_json::from_value(json!({
+            "url": "postgresql://127.0.0.1:1/testdb",
+            "auth_method": "password"
+        }))
+        .unwrap();
+        let credentials = RequestCredentials {
+            username: "test".to_string(),
+            password: "test".to_string(),
+        };
+        (config, credentials)
+    }
+
+    /// Port 1 is never listening -- connecting to it fails immediately with
+    /// "connection refused" rather than timing out, so this is fast and
+    /// deterministic without needing a real PostgreSQL server.
+    #[tokio::test]
+    async fn connect_reports_a_clean_error_for_a_refused_connection() {
+        let (config, credentials) = refused_connection_fixture();
+        let error = connect(&config, &credentials).await.unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("failed to connect to PostgreSQL")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connection_surfaces_the_connect_failure() {
+        let (config, credentials) = refused_connection_fixture();
+        assert!(test_connection(&config, &credentials).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn execute_operation_validates_the_http_method_before_connecting() {
+        let (config, credentials) = refused_connection_fixture();
+        let mut relation_endpoint =
+            endpoint("/relations/pg_catalog/pg_class", json!({}), json!({}));
+        relation_endpoint.method = "POST".to_string();
+        let error = execute_operation(&relation_endpoint, &config, &credentials, &json!({}))
+            .await
+            .unwrap_err();
+        assert!(!error.to_string().contains("failed to connect"));
+    }
+
+    #[tokio::test]
+    async fn execute_operation_reaches_the_network_for_a_well_formed_relation_call() {
+        let (config, credentials) = refused_connection_fixture();
+        let relation_endpoint = endpoint("/relations/pg_catalog/pg_class", json!({}), json!({}));
+        let error = execute_operation(&relation_endpoint, &config, &credentials, &json!({}))
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("failed to connect to PostgreSQL")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_parameterized_sql_rejects_invalid_max_rows_before_connecting() {
+        let (config, credentials) = refused_connection_fixture();
+        let error = execute_parameterized_sql(&config, &credentials, "SELECT 1", &[], Some(0))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("max_rows must be between"));
+    }
+
+    #[tokio::test]
+    async fn execute_parameterized_sql_reaches_the_network_after_passing_validation() {
+        let (config, credentials) = refused_connection_fixture();
+        let error = execute_parameterized_sql(&config, &credentials, "SELECT 1", &[], None)
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("failed to connect to PostgreSQL")
+        );
+    }
 }

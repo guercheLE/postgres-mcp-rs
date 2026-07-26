@@ -18,6 +18,12 @@ fn generated_server(args: &[&str]) -> Output {
             format!("http://127.0.0.1:{sentinel_port}"),
         )
         .env("POSTGRES_MCP_AUTH_METHOD", "password")
+        // Present so commands that reach credential resolution (e.g. `call`
+        // on a real operationId, `execute-sql`) get past it and exercise
+        // their own validation/network-attempt logic, rather than failing
+        // early on "no PostgreSQL username/password is configured".
+        .env("POSTGRES_MCP_USERNAME", "smoke-test-user")
+        .env("POSTGRES_MCP_PASSWORD", "smoke-test-password")
         .env_remove("POSTGRES_MCP_API_VERSION")
         .env_remove("POSTGRES_MCP_TRANSPORT")
         // Isolates the config cascade's global-config layer
@@ -101,6 +107,42 @@ fn invalid_commands_operations_and_arguments_fail_without_network_calls() {
     assert!(stderr(&unknown_call).contains("unknown operationId"));
 }
 
+/// `execute-sql`'s own validation (empty statement, `max_rows` bounds) runs
+/// before `postgres_client::connect` is ever called, and `--parameters`'
+/// JSON parsing runs before credential resolution -- all three of these
+/// fail deterministically without touching the network, same rationale as
+/// `invalid_commands_operations_and_arguments_fail_without_network_calls`.
+#[test]
+fn execute_sql_rejects_invalid_input_before_touching_the_network() {
+    let empty_sql = generated_server(&["execute-sql", "   "]);
+    assert!(!empty_sql.status.success());
+    assert!(stderr(&empty_sql).contains("sql must not be empty"));
+
+    let zero_max_rows = generated_server(&["execute-sql", "SELECT 1", "--max-rows", "0"]);
+    assert!(!zero_max_rows.status.success());
+    assert!(stderr(&zero_max_rows).contains("max_rows must be between"));
+
+    let invalid_parameters =
+        generated_server(&["execute-sql", "SELECT 1", "--parameters", "not-json"]);
+    assert!(!invalid_parameters.status.success());
+}
+
+/// `call`'s input-schema validation (`call_operation` -> `validate_input`)
+/// runs before it ever dials PostgreSQL -- calling a real routine
+/// operationId with a `body` missing its required arguments exercises that
+/// validation failure deterministically, without touching the network.
+#[test]
+fn call_rejects_a_routine_invocation_missing_its_required_body_arguments() {
+    let missing_body = generated_server(&[
+        "call",
+        "call_pg_catalog_set_config_aa8a686df6",
+        "--args",
+        "{}",
+    ]);
+    assert!(!missing_body.status.success());
+    assert!(stderr(&missing_body).contains("\"body\" is a required property"));
+}
+
 #[test]
 fn profiling_workload_controls_are_hidden_and_reject_zero_iterations() {
     let help = generated_server(&["search", "--help"]);
@@ -111,6 +153,21 @@ fn profiling_workload_controls_are_hidden_and_reject_zero_iterations() {
     let invalid = generated_server(&["search", "test query", "--profile-iterations", "0"]);
     assert!(!invalid.status.success());
     assert!(stderr(&invalid).contains("--profile-iterations must be at least 1"));
+
+    // The warmup/iteration loops and the timing summary they print are
+    // plain profiling-agnostic logic (only the `dhat` heap-profiler hookup
+    // itself is behind the `profiling` cargo feature), so this exercises
+    // them under the crate's default build too.
+    let profiled = generated_server(&[
+        "search",
+        "test query",
+        "--profile-warmups",
+        "1",
+        "--profile-iterations",
+        "2",
+    ]);
+    assert!(profiled.status.success(), "{}", stderr(&profiled));
+    assert!(stderr(&profiled).contains("1 warmup(s), 2 measured iteration(s)"));
 }
 
 #[cfg(feature = "profiling")]

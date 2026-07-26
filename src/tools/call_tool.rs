@@ -47,3 +47,50 @@ pub async fn call_operation(
     }
     Ok(response)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An operationId absent from the embedded validation schemas falls
+    /// back to an always-valid schema (see `validator.rs`'s own tests for
+    /// that behavior), so `validate_input` passes regardless of `args` --
+    /// letting this reach `execute_operation`'s `connect` call, which fails
+    /// fast and deterministically against a refused local port.
+    #[tokio::test]
+    async fn call_operation_reaches_execute_operation_after_passing_validation() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let endpoint = EndpointRecord {
+            operation_id: "definitely-not-a-real-operation-id".to_string(),
+            path: "/relations/pg_catalog/pg_class".to_string(),
+            method: "GET".to_string(),
+            summary: None,
+            description: None,
+            input_schema: serde_json::json!({}),
+            output_schema: serde_json::json!({}),
+        };
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "url": "postgresql://127.0.0.1:1/testdb",
+            "auth_method": "password"
+        }))
+        .unwrap();
+        let credentials = RequestCredentials {
+            username: "test".to_string(),
+            password: "test".to_string(),
+        };
+        let error = call_operation(
+            &endpoint,
+            &config,
+            &credentials,
+            &endpoint.operation_id,
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("failed to connect to PostgreSQL")
+        );
+    }
+}

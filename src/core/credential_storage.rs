@@ -186,6 +186,25 @@ mod tests {
     }
 
     #[test]
+    fn from_hex_rejects_an_odd_length_string() {
+        assert!(from_hex("abc").is_err());
+    }
+
+    /// Exercises `save_credential`/`load_credential`/`delete_credential`
+    /// through whichever backend this machine actually has (the real OS
+    /// keychain, or the encrypted-file fallback if none is available) --
+    /// cleans up after itself either way via `delete_credential`.
+    #[test]
+    fn save_load_and_delete_credential_round_trip_through_whichever_backend_is_available() {
+        let _guard = HOME_ENV_TEST_LOCK.blocking_lock();
+        let account = "postgresql-mcp-credential-storage-test-account";
+        save_credential(account, "s3cr3t").unwrap();
+        assert_eq!(load_credential(account).unwrap().as_deref(), Some("s3cr3t"));
+        delete_credential(account).unwrap();
+        assert_eq!(load_credential(account).unwrap(), None);
+    }
+
+    #[test]
     fn file_fallback_round_trips_a_credential() {
         // Exercises the encrypted-file path directly rather than through
         // `save_credential`/`load_credential`, since the OS keychain (the

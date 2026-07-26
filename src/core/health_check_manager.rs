@@ -123,4 +123,33 @@ mod tests {
             ComponentStatus::Unhealthy
         );
     }
+
+    /// No way to inject a shorter timeout (`DEFAULT_TIMEOUT` isn't
+    /// configurable, and tokio's `test-util`/`start_paused` isn't enabled
+    /// here), so this genuinely waits out `DEFAULT_TIMEOUT` to exercise
+    /// `run_once`'s `Err(_)` (timed-out) branch for real.
+    #[tokio::test]
+    async fn a_check_that_times_out_reports_unhealthy() {
+        let registry = Arc::new(Mutex::new(ComponentRegistry::new()));
+        let mut manager = HealthCheckManager::new(registry.clone());
+        manager
+            .register(
+                "db",
+                true,
+                Box::new(|| {
+                    Box::pin(async {
+                        tokio::time::sleep(DEFAULT_TIMEOUT * 2).await;
+                        Ok(())
+                    })
+                }),
+            )
+            .await;
+
+        manager.run_once().await;
+
+        assert_eq!(
+            registry.lock().await.overall_status(),
+            ComponentStatus::Unhealthy
+        );
+    }
 }
